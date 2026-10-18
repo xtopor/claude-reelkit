@@ -77,6 +77,8 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#000;-webkit-fon
 .ttl.serif-i{font-style:italic}
 .ttl.sans{font:800 110px/1.05 'Manrope',sans-serif;letter-spacing:.04em;text-transform:uppercase}
 .ttl.mono{font:700 44px/1.3 'JetBrains Mono',monospace;letter-spacing:.2em;text-transform:uppercase}
+.ttl.pop{font:800 170px/.95 'Manrope',sans-serif;letter-spacing:-.03em;text-transform:uppercase;color:var(--cream)}
+.ttl.pop span{display:inline-block;padding:.04em .18em;background:var(--accent);border-radius:.12em;box-shadow:0 30px 70px -20px rgba(0,0,0,.6)}
 .ttl small{display:block;margin-top:22px;font:500 32px 'JetBrains Mono',monospace;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,246,232,.8)}
 
 /* doodle boil: hand-drawn marker notes that wobble every 3 frames */
@@ -267,6 +269,11 @@ const TT = (S.titles || []).map(d => {
 function titles(t) {
   TT.forEach(({ d, el, sp }) => {
     const on = t >= d.at && t < d.to; el.style.display = on ? "" : "none"; if (!on) return;
+    if (d.style === "pop") {                   // kinetic word: slams in with a tiny overshoot, snaps out
+      const i = pr(t, d.at, d.at + 0.22), o = pr(t, d.to - 0.15, d.to);
+      el.style.opacity = Math.min(clamp(i * 3), 1 - o); el.style.filter = "";
+      el.style.transform = `scale(${0.6 + 0.4 * eBack(i)}) rotate(${(d.rot ?? -2) * (1 - i)}deg)`; return;
+    }
     const i = eOut(pr(t, d.at, d.at + 0.7)), o = pr(t, d.to - 0.5, d.to);
     el.style.opacity = Math.min(i, 1 - o); el.style.filter = i < 0.99 ? `blur(${(1 - i) * 14}px)` : "";
     sp.style.letterSpacing = `${(d.tracking ?? 0.02) + (1 - i) * 0.12}em`;
