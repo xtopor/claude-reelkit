@@ -1,0 +1,25 @@
+{
+  "name": "reelkit",
+  "version": "0.1.0",
+  "description": "Reels and TikToks from your own footage, directed and edited by Claude Code: script, free TTS voice (Ukrainian, English, 70+ languages), montage with motion effects, subtitles, sound, cover and caption. Works on Windows, Linux and macOS.",
+  "author": {
+    "name": "xtopor",
+    "url": "https://github.com/xtopor"
+  },
+  "homepage": "https://github.com/xtopor/claude-reelkit",
+  "repository": "https://github.com/xtopor/claude-reelkit",
+  "license": "MIT",
+  "keywords": [
+    "reels",
+    "tiktok",
+    "shorts",
+    "video",
+    "editing",
+    "motion-graphics",
+    "tts",
+    "edge-tts",
+    "ukrainian",
+    "content-creator",
+    "windows"
+  ]
+}

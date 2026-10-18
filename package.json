@@ -1,0 +1,13 @@
+{
+  "name": "reelkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node side of claude-reelkit: the reelkit CLI and the Playwright frame renderer. Runtime deps are installed into the data folder by `reelkit setup` (see scripts/setup.mjs).",
+  "bin": { "reelkit": "bin/reelkit.mjs" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/setup.mjs --check"
+  }
+}

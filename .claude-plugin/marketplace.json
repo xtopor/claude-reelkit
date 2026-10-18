@@ -1,0 +1,16 @@
+{
+  "name": "xtopor",
+  "description": "Claude Code plugins by xtopor",
+  "owner": {
+    "name": "xtopor",
+    "url": "https://github.com/xtopor"
+  },
+  "plugins": [
+    {
+      "name": "reelkit",
+      "source": "./",
+      "description": "Reels and TikToks from your own footage, directed and edited by Claude. Free TTS, Windows/Linux/macOS.",
+      "category": "video"
+    }
+  ]
+}
