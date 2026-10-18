@@ -22,6 +22,8 @@ const usage = `reelkit — reels from your own footage (Claude Code plugin)
                                     render single frames at those times into <reel-dir>/stills/
   reelkit masks <frames-dir> <out-dir>
                                     person masks (rembg, alpha PNG) + head positions, for cover / orbit
+  reelkit beats <audio> [out.json]  tempo, beat grid, loud/quiet sections of a track (cuts on the beat)
+  reelkit fetch <drive-url> [dir]   download a shared Google Drive folder or file (link access) into dir (default src)
   reelkit sfx                       (re)generate the synthesised sound bank in the data folder
   reelkit capcut stems|draft <reel-dir>
                                     stems + CapCut draft JSON with sound effects (see docs/capcut.md)
@@ -72,6 +74,14 @@ switch (cmd) {
     break;
   }
   case 'masks': py(path.join(ROOT, 'engine', 'masks.py'), args); break;
+  case 'beats': py(path.join(ROOT, 'engine', 'beats.py'), args); break;
+  case 'fetch': {
+    const [url, dir = 'src'] = args; if (!url) { console.error('usage: reelkit fetch <google-drive-folder-or-file-url> [dir]'); process.exit(1); }
+    mkdirSync(dir, { recursive: true });
+    if (!existsSync(PY)) { console.error('reelkit: not set up yet, run: reelkit setup'); process.exit(1); }
+    run(PY, ['-m', 'gdown', ...(url.includes('/folders/') ? ['--folder'] : []), url, '-O', url.includes('/folders/') ? dir : path.join(dir, '')]);
+    break;
+  }
   case 'sfx': py(path.join(ROOT, 'engine', 'sfx.py'), [path.join(DATA, 'sfx'), ...args]); break;
   case 'capcut': {
     const [sub, dir] = args; if (!sub || !dir) { console.error('usage: reelkit capcut stems|draft <reel-dir>'); process.exit(1); }

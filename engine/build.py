@@ -70,6 +70,10 @@ def time_voice(job, vo):
     key = json.dumps(vo, sort_keys=True) + str(src.stat().st_mtime)
     parts_f = out.with_suffix(".parts.json")
     if fresh(out, key) and parts_f.exists(): return out, jload(parts_f)
+    if vo.get("kind") == "music":                    # a song as the "voice": keep it stereo and untouched, just placed at offset
+        sh(FFMPEG, "-v", "error", "-y", "-i", src, "-af", f"adelay={int(vo.get('offset', 0) * 1000)}|{int(vo.get('offset', 0) * 1000)}", "-ar", "48000", "-ac", "2", out)
+        a, sr = load_wav(out); parts = [(0.0, len(a) / sr, vo.get("offset", 0))]
+        jdump(parts, parts_f); mark(out, key); return out, parts
     raw = job / "out/vo_raw.wav"                     # speed: atempo first, so gap times are on the sped-up voice
     sh(FFMPEG, "-v", "error", "-y", "-i", src, *(["-af", f"atempo={vo['speed']}"] if vo.get("speed") else []), "-ar", "48000", "-ac", "1", raw)
     a, sr = load_wav(raw); raw.unlink()
@@ -110,11 +114,14 @@ def transcribe(wav, lang=None):
     out = wav.with_name("words.json"); key = str(wav.stat().st_mtime) + str(lang)
     if fresh(out, key): return jload(out)
     from faster_whisper import WhisperModel
-    m = WhisperModel("small", device="cpu", compute_type="int8")
+    m = WhisperModel(os.environ.get("REELKIT_WHISPER", "small"), device="cpu", compute_type="int8")
+    # decode with ffmpeg ourselves: faster-whisper's own decoder breaks with newer PyAV versions
+    w16 = wav.with_name("_w16.wav"); sh(FFMPEG, "-v", "error", "-y", "-i", wav, "-ac", "1", "-ar", "16000", w16)
+    a16, _ = load_wav(w16); w16.unlink()
     words = []
     for vad in (True, False):                          # word alignment occasionally crashes with VAD on
         try:
-            segs, _ = m.transcribe(str(wav), language=lang, word_timestamps=True, vad_filter=vad)
+            segs, _ = m.transcribe(a16, language=lang, word_timestamps=True, vad_filter=vad)
             words = [{"w": w.word.strip(), "s": round(w.start, 3), "e": round(w.end, 3)} for s in segs for w in s.words if w.word.strip()]
             break
         except IndexError:
@@ -324,10 +331,10 @@ def sfx_track(job, spec, dur):
     mark(out, key); return out
 
 
-def mix(job, video, voice, music_wav, sfx_wav, out, dur, music_gain=0.16, sfx_gain=0.9):
+def mix(job, video, voice, music_wav, sfx_wav, out, dur, music_gain=0.16, sfx_gain=0.9, voice_is_music=False):
     ins = ["-i", video, "-i", voice] + (["-i", music_wav] if music_wav else []) + (["-i", sfx_wav] if sfx_wav else [])
     mi, si = (2, 3) if music_wav else (None, 2)
-    parts = ["[1:a]highpass=f=70,aformat=channel_layouts=stereo,asplit=2[v][sc]"]
+    parts = [("[1:a]aformat=channel_layouts=stereo,asplit=2[v][sc]" if voice_is_music else "[1:a]highpass=f=70,aformat=channel_layouts=stereo,asplit=2[v][sc]")]
     mixin = ["[v]"]
     if music_wav:
         parts.append(f"[{mi}:a]volume={music_gain}[m];[m][sc]sidechaincompress=threshold=0.03:ratio=6:attack=25:release=380[md]"); mixin.append("[md]")
@@ -388,8 +395,8 @@ def main():
             toks, ratio = align(script_tokens(spec["script"]), words)
             print(f"script ↔ voice: {ratio:.0%} of words matched")
             if ratio < 0.7: warn.append("the script differs a lot from the voice-over: check the text (or set \"lang\")")
-    for k in ("hook", "end", "doodles", "glass", "checklist", "cover", "wall", "orbit", "sfx"):   # "@word" times -> seconds
-        if spec.get(k): spec[k] = anchors(toks, spec[k], k if k in ("doodles", "sfx") else None)
+    for k in ("hook", "end", "doodles", "glass", "checklist", "cover", "wall", "orbit", "sfx", "titles"):   # "@word" times -> seconds
+        if spec.get(k): spec[k] = anchors(toks, spec[k], k if k in ("doodles", "sfx", "titles") else None)
     for k in ("subs_skip", "punch", "subs_from", "subs_until"):
         if isinstance(spec.get(k), (list, str)): spec[k] = anchors(toks, spec[k], "at")
     hook, end = spec.get("hook"), spec.get("end")
@@ -398,7 +405,8 @@ def main():
     skip = [list(w) for w in spec.get("subs_skip", [])]                 # no subtitles under glass titles / checklists
     if spec.get("glass"): skip.append([spec["glass"]["from"] - 0.05, spec["glass"]["to"]])
     if spec.get("checklist"): skip.append([spec["checklist"]["from"] - 0.05, spec["checklist"]["to"]])
-    subs = spec.get("subs") if spec.get("subs") not in (None, "auto") else (make_subs(toks, lo, hi, skip=skip) if toks else [])
+    for tt in spec.get("titles") or []: skip.append([tt["at"] - 0.05, tt["to"]])            # no captions under big titles
+    subs = spec.get("subs") if spec.get("subs") not in (None, "auto") else (make_subs(toks, lo, hi, lower_first=spec.get("subs_lower", True), maxw=spec.get("subs_words", 7), skip=skip) if toks else [])
     punch = spec.get("punch") if spec.get("punch") not in (None, "auto") else (auto_punch(toks, segs) if toks else [])
     stamps = []
     for st in spec.get("stamps", []):
@@ -413,7 +421,9 @@ def main():
     page = {"fps": FPS, "duration": dur, "segments": [{k: s.get(k) for k in ("id", "dur", "n", "look", "move", "date", "t0", "in", "cut", "head")} for s in segs],
             "subs": subs, "punch": punch, "stamps": stamps, "hook": hook, "end": end, "colors": spec.get("colors"),
             "doodles": spec.get("doodles"), "glass": spec.get("glass"), "checklist": spec.get("checklist"),
-            "cover": spec.get("cover"), "wall": spec.get("wall"), "orbit": spec.get("orbit")}
+            "cover": spec.get("cover"), "wall": spec.get("wall"), "orbit": spec.get("orbit"),
+            "titles": spec.get("titles"), "film": spec.get("film"), "subs_style": spec.get("subs_style"),
+            "lyric_y": spec.get("lyric_y"), "lyric_size": spec.get("lyric_size"), "lyric_accent": spec.get("lyric_accent")}
     (job / "spec.js").write_text("window.SPEC = " + json.dumps(page, ensure_ascii=False) + ";\n", encoding="utf8")
     shutil.copy(ENGINE / "template.html", job / "index.html")
     link_fonts(job)
@@ -465,10 +475,11 @@ def main():
     fx = sfx_track(job, spec, dur)
 
     if voice:
-        mix(job, job / "out/silent.mp4", voice, mwav, fx, job / "out/reel.mp4", dur, spec.get("music_gain", 0.16), spec.get("sfx_gain", 0.9))
-        mix(job, job / "out/silent.mp4", voice, None, fx, job / "out/reel_nomusic.mp4", dur, sfx_gain=spec.get("sfx_gain", 0.9))
+        vim = spec["vo"].get("kind") == "music"
+        mix(job, job / "out/silent.mp4", voice, mwav, fx, job / "out/reel.mp4", dur, spec.get("music_gain", 0.16), spec.get("sfx_gain", 0.9), vim)
+        if not vim: mix(job, job / "out/silent.mp4", voice, None, fx, job / "out/reel_nomusic.mp4", dur, sfx_gain=spec.get("sfx_gain", 0.9))
         sh(FFMPEG, "-v", "error", "-y", "-ss", spec.get("cover_t", 0.5), "-i", job / "out/reel.mp4", "-frames:v", 1, "-q:v", 2, job / "out/cover.jpg")
-        for f in ("reel.mp4", "reel_nomusic.mp4"):
+        for f in (("reel.mp4",) if vim else ("reel.mp4", "reel_nomusic.mp4")):
             i, p = loudness(job / "out" / f)
             print(f"{f}: {i:.1f} LUFS, peak {p:.1f} dB")
             if not -15 <= i <= -13 or p > -1: warn.append(f"{f}: loudness out of range (-14 LUFS ±1, peak ≤ -1 dB)")

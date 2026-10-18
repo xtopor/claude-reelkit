@@ -93,6 +93,27 @@ A minimal one is in `$(reelkit root)/examples/template/reel.json`.
 - **sfx**: `[{"name", "t", "vol", "dur"}]` mixed locally into the reel. Bank (synthesised, licence-free, in `reelkit data`/sfx): `whoosh`, `whoosh-short`, `pop`, `click`, `typing`, `impact`, `shutter`, `sparkle`, `coin`, `chime`, `ding`, `paper`, `snip`, `stamp`, `swell`. Any other name = a path to an audio file you own. `t` accepts `"@word"` anchors. `sfx_gain` (default 0.9) scales them all; keep effects quieter than the voice.
 - **colors**: `{"accent": "#D4573A", "cream": "#F4EFE6", "ink": "#1F1A17"}` (defaults: beige / terracotta).
 
+## Music video mode (a song instead of a voice-over)
+For "a film about our summer to this track": the song is the `vo`, the lyrics are the `script`, captions switch to the cinematic lyric style, cuts land on the beat.
+```json
+{
+  "vo": {"file": "music/track.mp3", "kind": "music", "offset": 0},
+  "script": "the lyrics, one flowing text, <em>accent words</em>; put the transcript next to the track as music/track.words.json ({\"words\": [{\"w\",\"s\",\"e\"}]}) so no Whisper pass is needed",
+  "subs": [[33.3, 38.8, "first line"], [38.9, 41.9, "second <em>line</em>"]],
+  "subs_style": "lyric", "subs_lower": false, "lyric_y": 1120, "lyric_size": 84, "lyric_accent": "#FFD9B8",
+  "titles": [{"text": "our summer", "sub": "2026", "at": 1.0, "to": 9.0, "style": "serif-i", "size": 150, "y": 780}],
+  "film": {"bars": 96},
+  "music": null
+}
+```
+- `kind: "music"` keeps the track stereo and untouched (no highpass, no second `reel_nomusic.mp4`), normalised to −14 LUFS with the limiter.
+- Lyrics timing: `reelkit build --stills` prints the auto chunks; for singing, Whisper word times are coarse, so write `subs` by hand from the printed segment times (one lyric line each, 3–5 s). `titles` hide captions while they are up.
+- Beat grid: `reelkit beats music/track.mp3` → `bpm`, `beats`, `downbeats`, `sections` (loud/quiet). Snap every cut to a beat (verses: one shot per bar or two, chorus: one per bar, solo: every 2 beats), transitions (`in: zoom/whip`) only on downbeats that start a chorus line. Keep a `plan.py` next to the reel that writes reel.json from a list of (time, clip, ss, options) and snaps the times.
+- Grade: `look: "bw"` for a melancholic verse, `look: "burst"` on the line that turns to the chorus, `rate: 0.35` on 120-fps clips for true slow motion, `move: "pull-out"` on the last wide shot, a `titles` card at the start and the end.
+- Landscape 4K phone clips crop to 9:16 through the centre (`pos` to shift). For a two-person selfie that would lose a face, pre-make a vertical version with a blurred background: `ffmpeg -i in.mp4 -filter_complex "[0:v]split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=40[bg];[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2" -an out.mp4`.
+- Footage from a shared Google Drive link: `reelkit fetch <folder-url> src` (gdown; the folder must be open "to anyone with the link"). Clips saved from other people's stories carry a watermark at the bottom: cut it with `crop: [0.02, 0, 0.86]`.
+- Render time: ~0.2 s per frame, so a 4-minute film takes 25–40 minutes. Run it in the background and check `out/qa_sheet.jpg` + `reelkit stills` first.
+
 ## Rules that came from real feedback
 - Effects must read at phone size on the first watch: big, accent-coloured, animated. Small cream doodles and a faint glass panel were "where are the effects?".
 - No repeated white flashes on cuts. Mute original clip sound. 3–5 techniques per reel, not all of them.
